@@ -175,7 +175,7 @@ def extended_tables():
         comparison = next(row for row in panel["proposal"] if row["penalty"] == penalty)
         for market, name in MARKETS:
             group = comparison["held_out"][market]
-            rows.append([label, name, paired_estimate(group["auto_cost_shift"]),
+            rows.append([f"Qwen3-{label}", name, paired_estimate(group["auto_cost_shift"]),
                          paired_estimate(group["excluded"]["auto_savings"]["budget_check"])])
         for case in panel["execution"]:
             if case["overhead"] != 20:
@@ -183,7 +183,7 @@ def extended_tables():
             group = case["pooled"]
             referrals.append([label, pct(case["resolution"]), pct(group["policies"]["auto"]["completion"]),
                               paired_estimate(group["auto_savings"]["budget_check"])])
-    write_table("table_held_out_market.tex", ["Model", "Market", "Shift", "Agreement savings"], rows, "llrr")
+    write_table("table_held_out_market.tex", ["Model", "Market", "Shift", "Savings"], rows, "llrr")
     write_table("table_referral_resolution.tex", ["Model", "Resolve", "Complete", "Agreement savings"], referrals, "lrrr")
 
 
@@ -427,10 +427,12 @@ def main():
     write_table("table_operator_weight.tex", [r"$\alpha$", "Loss", "Inference", "Loss", "Inference"], rows, "rrrrr",
                 [r" & \multicolumn{2}{c}{Opaque} & \multicolumn{2}{c}{Disclosed} \\",
                  r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}"])
+    write_csv("operator_weight.csv", ["row", "alpha", "opaque_loss", "opaque_inference", "disclosed_loss", "disclosed_inference"],
+              [[i, *row] for i, row in enumerate(rows)])
 
     rows = []
     public_corpus = set()
-    for checkpoint, model in (("qwen3-4b-q4", "4B"), ("qwen3-8b-q4", "8B")):
+    for checkpoint, model in (("qwen3-4b-q4", "Qwen3-4B"), ("qwen3-8b-q4", "Qwen3-8B")):
         for suffix, units in (("", "Convert"), ("-stated", "Copy")):
             path = PUBLIC_LABELS / f"{checkpoint}{suffix}.json"
             report = json.loads(path.read_text())
