@@ -216,8 +216,8 @@ def authorization_tables():
     write_table("table_retail_cart.tex", ["Pool", "Output", "IDs", "Headline", "Cart"], rows, "llrrr")
 
 
-def checkout_audit_table(source):
-    report = json.loads(source.read_text())
+def checkout_tables(directory):
+    report = json.loads((directory / "carttrace-audit.json").read_text())
     cases = report["eligible_cases"]
     labels = {row["model"]: row["label"] for row in json.loads((BREADTH / "summary.json").read_text())["models"]}
     if report["matched_cases"] != cases or set(report["models"]) != set(labels):
@@ -240,6 +240,21 @@ def checkout_audit_table(source):
     write_table("table_carttrace_audit.tex", ["Checkpoint", "Reread", "+Receipt", "Reread", "+Receipt"], rows, "lrrrr",
                 [r" & \multicolumn{2}{c}{Correct orders} & \multicolumn{2}{c}{Incorrect orders} \\",
                  r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}"])
+    storefront = directory / "storefront-model-replay.json"
+    if not storefront.exists():
+        return
+    retail = json.loads(storefront.read_text())
+    if retail["tasks_per_model"] != 144 or set(retail["models"]) != set(labels):
+        raise ValueError("The storefront table requires the full USD panel")
+    rows = []
+    for model, label in labels.items():
+        saved = retail["models"][model]
+        outcomes = saved["all"]
+        if outcomes["tasks"] != retail["tasks_per_model"]:
+            raise ValueError(f"Incomplete USD storefront panel for {model}")
+        rows.append([label, str(outcomes["first_two_then_check_valid"]), str(outcomes["drafts_10_valid"]),
+                     str(saved["fixed_nominations"]["fixed_nominees_approved"]), str(outcomes["extra_source_valid"])])
+    write_table("table_storefront_replay.tex", ["Checkpoint", "Two drafts", "Ten drafts", "Same pair", "Next card"], rows, "lrrrr")
 
 
 def main():
@@ -536,9 +551,9 @@ def main():
     authorization_tables()
     if (BREADTH / "summary.json").is_file():
         model_breadth_tables()
-    audits = RESULTS / "checkout_expansion_2026-11-27/carttrace-audit.json"
-    if audits.is_file():
-        checkout_audit_table(audits)
+    expansion = RESULTS / "checkout_expansion_2026-11-27"
+    if (expansion / "carttrace-audit.json").is_file():
+        checkout_tables(expansion)
 
 
 if __name__ == "__main__":
