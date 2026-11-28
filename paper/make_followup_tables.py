@@ -216,6 +216,32 @@ def authorization_tables():
     write_table("table_retail_cart.tex", ["Pool", "Output", "IDs", "Headline", "Cart"], rows, "llrrr")
 
 
+def checkout_audit_table(source):
+    report = json.loads(source.read_text())
+    cases = report["eligible_cases"]
+    labels = {row["model"]: row["label"] for row in json.loads((BREADTH / "summary.json").read_text())["models"]}
+    if report["matched_cases"] != cases or set(report["models"]) != set(labels):
+        raise ValueError("The checkout table requires the full primary audit panel")
+    extra = {"llama32-3b-q4": "Llama 3.2 3B", "mistral-small32-24b-q4": "Mistral Small 3.2 24B",
+             "phi4-14b-q4": "Phi-4 14B", "command-r7b-q4": "Command R7B"}
+    panel = report["models"] | report["supplementary_models"]
+    rows = []
+    for model, label in (labels | extra).items():
+        if model not in panel:
+            continue
+        group = panel[model]["all"]
+        if group["tasks"] != cases or group["right"] + group["wrong"] != cases:
+            raise ValueError(f"Incomplete audit outcomes for {model}")
+        fields = [pct(group[f"{arm}_{valid}_approval"] / group[valid])
+                  for valid in ("right", "wrong") for arm in ("reread", "receipt")]
+        rows.append([label, *fields])
+    if len(rows) != len(panel):
+        raise ValueError("Unknown checkpoint in the checkout audit panel")
+    write_table("table_carttrace_audit.tex", ["Checkpoint", "Reread", "+Receipt", "Reread", "+Receipt"], rows, "lrrrr",
+                [r" & \multicolumn{2}{c}{Correct orders} & \multicolumn{2}{c}{Incorrect orders} \\",
+                 r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}"])
+
+
 def main():
     summaries = list(load_summaries())
     groups = " & ".join(rf"\multicolumn{{2}}{{c}}{{{model}}}" for model, _ in summaries)
@@ -510,6 +536,9 @@ def main():
     authorization_tables()
     if (BREADTH / "summary.json").is_file():
         model_breadth_tables()
+    audits = RESULTS / "checkout_expansion_2026-11-27/carttrace-audit.json"
+    if audits.is_file():
+        checkout_audit_table(audits)
 
 
 if __name__ == "__main__":
