@@ -18,7 +18,7 @@ from scripts.effort_followup import load_panel, review_messages
 from scripts.effort_followup_report import decision_point, read_responses, replay
 from scripts.family_transfer import MODEL as GPT_OSS, verify_template as verify_reasoning
 from scripts.model_breadth import caps
-from scripts.model_breadth_report import MODELS
+from scripts.model_breadth_report import MODELS, SUPPLEMENTARY_MODELS
 
 
 BLOCKS = range(6, 24)
@@ -143,7 +143,7 @@ def main():
     args = parser.parse_args()
     checkpoint = load_checkpoint(args.checkpoint)
     model = checkpoint["model"]
-    if model not in MODELS:
+    if model not in MODELS and model not in SUPPLEMENTARY_MODELS:
         parser.error("checkpoint is outside the matched protocol")
     if args.qwen_disclosure and (args.endpoint or args.review_reference or model not in ARCHIVED_QWEN):
         parser.error("archived disclosures apply to an offline Qwen3 replay")
@@ -163,7 +163,7 @@ def main():
             verify_reasoning(args.endpoint)
             encoding = "native"
         else:
-            if model in ARCHIVED_QWEN:
+            if model.startswith("qwen3-"):
                 check_template(args.endpoint)
             encoding = verify_template(args.endpoint, generate_task(900122, "decoy"))
         if reference is not None and encoding != reference_encoding:

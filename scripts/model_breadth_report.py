@@ -26,6 +26,14 @@ MODELS = {
     "aya8b-q4": ("Aya Expanse 8B", "Aya"),
     "smollm3-3b-q4": ("SmolLM3 3B", "SmolLM3"),
 }
+SUPPLEMENTARY_MODELS = {
+    "llama32-3b-q4": ("Llama 3.2 3B", "Llama"),
+    "mistral-small32-24b-q4": ("Mistral Small 3.2 24B", "Mistral"),
+    "phi4-14b-q4": ("Phi-4 14B", "Phi"),
+    "command-r7b-q4": ("Command R7B", "Command"),
+    "gemma3-27b-q4": ("Gemma 3 27B", "Gemma 3"),
+    "qwen3-30b-a3b-q4": ("Qwen3 30B-A3B", "Qwen3"),
+}
 SYNTHETIC_COUNTS = {"benign": 96, "decoy": 96, "decoy_injection": 96, "unconditioned": 128}
 
 

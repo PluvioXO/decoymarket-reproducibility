@@ -217,13 +217,14 @@ def authorization_tables():
 
 
 def checkout_tables(directory):
+    from scripts.model_breadth_report import SUPPLEMENTARY_MODELS
+
     report = json.loads((directory / "carttrace-audit.json").read_text())
     cases = report["eligible_cases"]
     labels = {row["model"]: row["label"] for row in json.loads((BREADTH / "summary.json").read_text())["models"]}
     if report["matched_cases"] != cases or set(report["models"]) != set(labels):
         raise ValueError("The checkout table requires the full primary audit panel")
-    extra = {"llama32-3b-q4": "Llama 3.2 3B", "mistral-small32-24b-q4": "Mistral Small 3.2 24B",
-             "phi4-14b-q4": "Phi-4 14B", "command-r7b-q4": "Command R7B"}
+    extra = {model: label for model, (label, _) in SUPPLEMENTARY_MODELS.items()}
     panel = report["models"] | report["supplementary_models"]
     rows = []
     for model, label in (labels | extra).items():
@@ -239,6 +240,21 @@ def checkout_tables(directory):
         raise ValueError("Unknown checkpoint in the checkout audit panel")
     write_table("table_carttrace_audit.tex", ["Checkpoint", "Reread", "+Receipt", "Reread", "+Receipt"], rows, "lrrrr",
                 [r" & \multicolumn{2}{c}{Correct orders} & \multicolumn{2}{c}{Incorrect orders} \\",
+                 r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}"])
+
+    native = json.loads((directory / "carttrace-native-reasoning.json").read_text())
+    if native["tasks_per_model"] != 384 or native["caps"] != [128, 2048]:
+        raise ValueError("Unexpected native reasoning audit panel")
+    rows = []
+    for model in ("qwen3-8b-q4", "qwen3-14b-q4", "gpt-oss-20b-mxfp4"):
+        results = native["models"][model]
+        if (results["right"], results["wrong"]) != (267, 117):
+            raise ValueError(f"Incomplete native reasoning audit for {model}")
+        fields = [f"{results[f'{cap}_{arm}_right_approval']}/{results[f'{cap}_{arm}_wrong_approval']}"
+                  for cap in native["caps"] for arm in ("card", "receipt")]
+        rows.append([labels[model], *fields])
+    write_table("table_carttrace_native.tex", ["Checkpoint", "Card", "+Receipt", "Card", "+Receipt"], rows, "lrrrr",
+                [r" & \multicolumn{2}{c}{128 tokens} & \multicolumn{2}{c}{2,048 tokens} \\",
                  r"\cmidrule(lr){2-3}\cmidrule(lr){4-5}"])
     storefront = directory / "storefront-model-replay.json"
     if not storefront.exists():
