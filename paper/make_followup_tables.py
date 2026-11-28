@@ -181,7 +181,7 @@ def extended_tables():
             if case["overhead"] != 20:
                 continue
             group = case["pooled"]
-            referrals.append([label, pct(case["resolution"]), pct(group["policies"]["auto"]["completion"]),
+            referrals.append([f"Qwen3-{label}", pct(case["resolution"]), pct(group["policies"]["auto"]["completion"]),
                               paired_estimate(group["auto_savings"]["budget_check"])])
     write_table("table_held_out_market.tex", ["Model", "Market", "Shift", "Savings"], rows, "llrr")
     write_table("table_referral_resolution.tex", ["Model", "Resolve", "Complete", "Agreement savings"], referrals, "lrrr")
@@ -256,6 +256,19 @@ def checkout_tables(directory):
                      str(saved["fixed_nominations"]["fixed_nominees_approved"]), str(outcomes["extra_source_valid"])])
     write_table("table_storefront_replay.tex", ["Checkpoint", "Two drafts", "Ten drafts", "Same pair", "Next card"], rows, "lrrrr")
 
+    expansion = json.loads((directory / "catalog-replay.json").read_text())
+    sandbox = expansion["evidence"]
+    if set(sandbox) != set(labels):
+        raise ValueError("The receipt-change table requires all 14 checkpoints")
+    rows = []
+    for model, label in labels.items():
+        result = sandbox[model]["sandbox"]["all"]
+        if (result["tasks"], result["mandate_eligible"]) != (165, 78):
+            raise ValueError(f"Incomplete receipt-change replay for {model}")
+        fields = ("mandate_valid", "mandate_invalid", "mandate_stale")
+        rows.append([label, *(str(result[field]) for field in fields)])
+    write_table("table_ucp_model_replay.tex", ["Checkpoint", "Within", "Outside", "Stale"], rows, "lrrr")
+
 
 def main():
     summaries = list(load_summaries())
@@ -318,7 +331,7 @@ def main():
             else:
                 penalty, referral = "--", r"\$" + f"{overhead:g}"
             low, high = case["interval"]
-            rows.append([label, penalty, referral, paired_estimate({"delta": case["difference"], "low": low, "high": high})])
+            rows.append([f"Qwen3-{label}", penalty, referral, paired_estimate({"delta": case["difference"], "low": low, "high": high})])
     write_table("table_refit_effort.tex", ["Model", "Penalty", "Referral", "Savings"], rows, "lrrr")
 
     guard = json.loads((CATALOG / "quote-guard.json").read_text())["models"]

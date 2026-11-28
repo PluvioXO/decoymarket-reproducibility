@@ -45,11 +45,11 @@ def store_interval(stores, key):
             "paired_store_bootstrap_95_points": [100 * cut[0], 100 * cut[-1]], "stores": len(samples)}
 
 
-def report(root, max_cases):
+def report(root, max_cases, split="test_cross_store"):
     data = (root / "panel.json").read_bytes()
     panel = json.loads(data)
-    if panel["dataset_revision"] != REVISION or panel["split"] != "test_cross_store":
-        raise ValueError("Use the pinned cross-store checkout panel")
+    if panel["dataset_revision"] != REVISION or panel["split"] != split:
+        raise ValueError(f"Use the pinned {split} checkout panel")
     cases = panel["cases"]
     paths = {m: root / "checkout-audit" / m / "0" for m in MODELS}
     expected = sha256(data).hexdigest()
@@ -106,8 +106,9 @@ def main():
     parser.add_argument("run_root", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--max-cases", type=int, default=1_000_000)
+    parser.add_argument("--split", choices=("test_cross_store", "test_cross_template"), default="test_cross_store")
     args = parser.parse_args()
-    value = report(args.run_root, args.max_cases)
+    value = report(args.run_root, args.max_cases, args.split)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, value)
 

@@ -10,7 +10,7 @@ from math import sqrt
 from pathlib import Path
 from statistics import fmean, stdev
 
-from scripts.checkout_expansion import BLOCK, SIMULATIONS, add_row, blocks, catalog_tasks
+from scripts.checkout_expansion import BLOCK, SIMULATIONS, add_row, blocks, catalog_tasks, ranked, scoped
 from scripts.collect_live import write_json
 
 
@@ -51,6 +51,8 @@ def read_shared(root, max_blocks):
     available = summaries(root)
     report = {model: defaultdict(Counter) for model in available}
     prefixes = {model: {i: blocks(archive, i, len(paths)) for i in paths} for model, paths in available.items()}
+    full_panel = blocks(archive, 0, 1)
+    deterministic = defaultdict(Counter)
     paired = defaultdict(list)
     done = 0
     for offset in range(0, min(SIMULATIONS, max_blocks * BLOCK), BLOCK):
@@ -68,17 +70,35 @@ def read_shared(root, max_blocks):
                 for row in rows:
                     add_row(report[model], row)
                     cases[row["id"]].append(row)
-        for rows in cases.values():
+        _, tasks = next(full_panel)
+        for task in tasks:
+            rows = cases[task["id"]]
             if len(rows) != len(available):
                 raise ValueError(f"Partial model matching for {rows[0]['id']}")
-            if rows[0]["domain"] != "simulated_checkout":
+            cards, quotes = task["cards"], task["quotes"]
+            first = ranked(task, cards, cards)
+            first_quotes = scoped(task, (first,))
+            second = ranked(task, cards.keys() - first_quotes.keys(), cards)
+            two_quotes = first_quotes | scoped(task, (second,))
+            one_valid = ranked(task, first_quotes, quotes) is not None
+            two_valid = ranked(task, two_quotes, quotes) is not None
+            full_valid = ranked(task, quotes, quotes) is not None
+            if not one_valid <= two_valid <= full_valid or any(
+                (row["score"]["visible_then_verify"][1], row["score"]["oracle"][1]) != (one_valid, full_valid) for row in rows
+            ):
+                raise ValueError(f"Deterministic replay differs for {task['id']}")
+            domain = task["domain"]
+            deterministic[domain].update(tasks=1, one_source_valid=one_valid, two_source_valid=two_valid,
+                                         full_inventory_valid=full_valid, first_lookups=first is not None,
+                                         extra_lookups=second is not None)
+            if domain != "simulated_checkout":
                 continue
             for alternative in CONTRASTS:
                 paired[alternative].append(fmean(int(row["score"]["source"][1]) - row["score"][alternative][1] for row in rows))
         done += 1
     if not done:
         raise ValueError("No completed matched blocks")
-    return {"matched_blocks": done, "models": report,
+    return {"matched_blocks": done, "models": report, "deterministic": deterministic,
             "simulated_paired_source_vs": {alternative: paired_interval(paired[alternative]) for alternative in CONTRASTS}}
 
 

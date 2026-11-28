@@ -75,24 +75,57 @@ def frontier_comparison(models, baseline):
     return counts
 
 
+def cross_fitted_threshold(folds, arm):
+    policies = {f"{arm}_{threshold}_of_{draws}": draws for draws in range(1, REPEATS + 2)
+                for threshold in range(1, draws + 1)}
+    policies["always_refer"] = 0
+    receipt = "receipt_1_of_1"
+    selected = []
+    totals = Counter()
+    for fit, test in (folds, folds[::-1]):
+        def scores(policy):
+            return fit[policy + "_right_approved"], -fit[policy + "_wrong_approved"], -policies[policy]
+
+        allowed = fit[receipt + "_wrong_approved"]
+        policy = max((name for name in policies if fit[name + "_wrong_approved"] <= allowed), key=scores)
+        selected.append(policy)
+        for label in ("right", "wrong"):
+            totals[label] += test[label]
+            totals[f"threshold_{label}_approved"] += test[f"{policy}_{label}_approved"]
+            totals[f"receipt_{label}_approved"] += test[f"{receipt}_{label}_approved"]
+    return {"policies_by_training_fold": selected, **totals}
+
+
 def summarize(root, repeat_root, output):
     data = (root / "panel.json").read_bytes()
     repeat_panel = json.loads((repeat_root / "panel.json").read_bytes())
     assert repeat_panel["original_sha256"] == sha256(data).hexdigest()
     cases = json.loads(data)["cases"][:PANEL_SIZE]
-    models = {}
+    stores = sorted({case["store"] for case in cases}, key=lambda key: sha256(key.encode()).digest())
+    fit_stores = set(stores[:len(stores) // 2])
+    partitions = ([case for case in cases if case["store"] in fit_stores],
+                  [case for case in cases if case["store"] not in fit_stores])
+    assert all({case["correct"] for case in batch} == {True, False} for batch in partitions)
+    models, cross_fitted = {}, {}
     for model in MODELS:
         baseline = root / "checkout-audit" / model / "0"
         repeat = repeat_root / "checkout-audit" / model / "0"
         first, more = read_rows(baseline, PANEL_SIZE), read_rows(repeat, len(repeat_panel["cases"]))
         if len(first) < PANEL_SIZE or len(more) != len(repeat_panel["cases"]):
             continue
-        models[model] = vote_counts(cases, first, more)
+        folds = tuple(vote_counts(batch, first, more) for batch in partitions)
+        combined = folds[0].copy()
+        combined.update(folds[1])
+        models[model] = combined
+        cross_fitted[model] = {arm: cross_fitted_threshold(folds, arm) for arm in ("card", "reread")}
+        assert all(result["right"] + result["wrong"] == PANEL_SIZE for result in cross_fitted[model].values())
     if not models:
         raise ValueError("No complete repeated audits")
     write_json(output, {"cases_per_model": PANEL_SIZE, "seeds_per_case": REPEATS + 1, "models": models,
                         "same_or_fewer_incorrect_approvals": {baseline: frontier_comparison(models, baseline)
-                                                              for baseline in ("card", "reread")}})
+                                                              for baseline in ("card", "reread")},
+                        "store_cross_fit": {"stores_per_fold": [len(fit_stores), len(stores) - len(fit_stores)],
+                                            "cases_per_fold": [len(batch) for batch in partitions], "models": cross_fitted}})
 
 
 def main():
