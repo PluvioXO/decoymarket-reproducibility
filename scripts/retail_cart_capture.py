@@ -9,6 +9,7 @@ from hashlib import sha256
 from http.cookiejar import CookieJar
 import json
 from pathlib import Path
+import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
@@ -40,11 +41,11 @@ def reason(error):
     return str(error) if isinstance(error, ValueError) else "incomplete response"
 
 
-def cart_quote(origin, variant, quantity, address):
+def cart_quote(origin, variant, quantity, address, *, client=None):
     evidence = []
     stage = "cart_add"
     try:
-        client = build_opener(HTTPCookieProcessor(CookieJar()))
+        client = client or build_opener(HTTPCookieProcessor(CookieJar()))
         fetch(client, origin + "/cart/add.js", evidence, {"items": [{"id": variant, "quantity": quantity}]})
         stage = "cart"
         cart = fetch(client, origin + "/cart.js", evidence)
@@ -84,7 +85,14 @@ def capture(offer, quantities, address):
             raise ValueError("unsupported product URL")
         product = fetch(build_opener(), origin + url.path.rstrip("/") + ".js", row["product_evidence"])
         variants = product["variants"]
-        variant = next(v for v in variants if v["id"] == offer["variant"]) if "variant" in offer else variants[0]
+        if "variant" in offer:
+            variant = next(v for v in variants if v["id"] == offer["variant"])
+        elif "size_oz" in offer:
+            sizes = "|".join(map(str, offer["size_oz"]))
+            variant = min((v for v in variants if re.search(rf"\b(?:{sizes})\s*(?:fl\s*)?oz\b", v["title"], re.I)),
+                          key=lambda v: v["id"])
+        else:
+            variant = variants[0]
         if type(variant["price"]) is not int or variant["price"] < 0 or type(variant["available"]) is not bool:
             raise ValueError("invalid product variant")
         row["card"] = {"title": product["title"], "variant_title": variant["title"], "variant": variant["id"],
